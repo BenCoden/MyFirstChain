@@ -22,64 +22,46 @@ namespace MyFirstChain.src
         public IEnumerable<Block> BlockChain { get; set; }
         public MyChain()
         {
-            if (BlockChain==null)
+            if (BlockChain == null)
             {
-                BlockChain = new List<Block>() {
-                new Block(this.BlockChain)
-            };
+                BlockChain = new List<Block>()
+                {
+                        new Block(0)
+                 };
             }
-         
         }
 
         public Block CreateBlock(string prevHash = "0", int proff = 1)
         {
-            var newBlock = new Block(BlockChain, prevHash, proff);
-            BlockChain = BlockChain.Append(newBlock);
-            var count = BlockChain.Count();
+            var newBlock = new Block(BlockChain.Count(), prevHash, proff);
+            if (IsChainValid(BlockChain.Append(newBlock)))
+            {
+                BlockChain = BlockChain.Append(newBlock);
+            }
+            else
+            {
+                return null;
+            }
+            
             return newBlock;
         }
-        public Block PrivousBlock() => this.BlockChain.ToList().SingleOrDefault(s => s.Index == this.BlockChain.ToList().Count() - 1);
-
+        public Block PrivousBlock() => this.BlockChain.SingleOrDefault(s => s.Index == this.BlockChain.Count() - 1);
         public int ProffOfWork(int prevProff)
         {
             var newProff = 1;
-            var checkProff = false;
-            using (var hashOpration = SHA256.Create())
+            using (var hashOpration = CreateHashing())
             {
                 byte[] encodeBuffer, hash;
                 string hashHexString;
-                string itemStr;
+                var checkProff = false;
+
                 while (!checkProff)
                 {
-
-                    encodeBuffer = Encoding.ASCII.GetBytes((
-                          (Math.Sqrt(newProff) * 2)
-                       - (Math.Sqrt(prevProff) * 2)
-                       ).ToString());
+                    encodeBuffer = EncodedProff(prevProff, newProff);
                     hash = hashOpration.ComputeHash(encodeBuffer);
+                    hashHexString = ByteArrayToString(hash);
 
-                    hashHexString = "";
-                    for (int i = 0; i < 3; i++)
-                    {
-                        byte item = hash[i];
-                        switch (item.ToString().Length)
-                        {
-                            case 1:
-                                itemStr = $"00{item}";
-                                break;
-                            case 2:
-                                itemStr = $"0{item}";
-                                break;
-                            case 3:
-                                itemStr = $"{item}";
-                                break;
-                            default:
-                                itemStr = "000";
-                                break;
-                        }
-                        hashHexString += itemStr;
-                    }
-                    if (hashHexString.Substring(0, 4).Equals("0000"))
+                    if (IsProffValid(hashHexString))
                         checkProff = true;
                     else
                         newProff++;
@@ -89,20 +71,53 @@ namespace MyFirstChain.src
             return newProff;
 
         }
-
         public string HashBlock(Block newBlock)
         {
             var jsonChain = Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(newBlock));
             byte[] hash;
-            using (var hashOpration = SHA256.Create())
+            using (var hashOpration = CreateHashing())
             {
                 hash = hashOpration.ComputeHash(jsonChain);
-
             }
-            var hashStr = "";
-            string itemStr;
-            foreach (var item in hash)
+            var hashStr = ByteArrayToString(hash);
+            return hashStr;
+        }
+
+        public bool IsChainValid(IEnumerable<Block> chain)
+        {
+            var prevBlock = chain.ElementAt(0);
+            using (var hashOpration = CreateHashing())
             {
+                Block block;
+                byte[] encodeBuffer, hash;
+                string hashHexString;
+                for (int i = 1; i < chain.Count(); i++)
+                {
+                    block = chain.ElementAt(i);
+                    if (block.PreviousHash != HashBlock(prevBlock))
+                        return false;
+
+                    encodeBuffer = EncodedProff(prevBlock.Proff, block.Proff);
+                    hash = hashOpration.ComputeHash(encodeBuffer);
+                    hashHexString = ByteArrayToString(hash);
+
+                    if (!IsProffValid(hashHexString))
+                        return false;
+
+                    prevBlock = block;
+                }
+            }
+
+            return true;
+        }
+        #region Private methods
+
+        private string ByteArrayToString(byte[] arg)
+        {
+            var result = "";
+            foreach (var item in arg)
+            {
+                string itemStr;
                 switch (item.ToString().Length)
                 {
                     case 1:
@@ -118,51 +133,42 @@ namespace MyFirstChain.src
                         itemStr = "000";
                         break;
                 }
-                hashStr += itemStr;
+                result += itemStr;
             }
-
-
-
-            return hashStr;
+            return result;
         }
 
-        public bool IsChainValid(IEnumerable<Block> chain)
+        private byte[] EncodedProff(int prevProff, int newProff)
         {
-            var prevBlock = chain.ElementAt(0);
-
-            for (int i = 1; i < chain.Count(); i++)
-            {
-                var block = chain.ElementAt(i);
-                if (block.PreviousHash != HashBlock(prevBlock))
-                    return false;
-                using (var hashOpration = SHA256.Create())
-                {
-                    var encodeBuffer = Encoding.ASCII.GetBytes((
-                           (Math.Sqrt(block.Proff) * 2)
-                        - (Math.Sqrt(prevBlock.Proff) * 2)
-                        ).ToString());
-                    var hash = hashOpration.ComputeHash(encodeBuffer);
-
-                    if (!hash.ToString().Substring(0, 4).Equals("0000"))
-                        return false;
-                }
-                prevBlock = block;
-
-            }
-
-            return true;
+            byte[] result = Encoding.ASCII.GetBytes((
+                          (Math.Sqrt(newProff) * 2)
+                       - (Math.Sqrt(prevProff) * 2)
+                       ).ToString());
+            return result;
         }
+
+        private bool IsProffValid(string arg)
+        {
+            bool result = arg.Substring(0, 6).Equals("000000");
+            return result;
+        }
+
+        private SHA512 CreateHashing()
+        {
+            return SHA512.Create();
+        }
+
+
+        #endregion
     }
 
-    public class Block
+    public  class Block
     {
 
-        public Block(IEnumerable<Block> currentChain, string prevHash = "0", int proff = 1)
+        public Block(int currentChainAmount, string prevHash = "0", int proff = 1)
         {
-            if (currentChain != null)
-                this.Index = currentChain.Count() ;
-            else
-                this.Index = 0;
+
+            this.Index = currentChainAmount;
             this.TimeSpame = DateTime.Now.ToUniversalTime();
             this.Proff = proff;
             this.PreviousHash = prevHash;

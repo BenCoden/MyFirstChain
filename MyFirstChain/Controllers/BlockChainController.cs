@@ -23,7 +23,7 @@ namespace MyFirstChain.Controllers
             var proff = _myChain.ProffOfWork(prevBlock.Proff);
             var prevHash = _myChain.HashBlock(prevBlock);
             var block = _myChain.CreateBlock(prevHash, proff);
-
+            if (block != null)
             return Accepted(new
             {
                 message = "Winner, Winner Chick Dinner!",
@@ -32,6 +32,8 @@ namespace MyFirstChain.Controllers
                 proff = block.Proff,
                 prevHash = block.PreviousHash
             });
+
+            return BadRequest();
         }
         [Route("GetChain"), HttpGet()]
         public IActionResult GetChain()
@@ -43,6 +45,11 @@ namespace MyFirstChain.Controllers
             };
 
             return Ok(response);
+        }
+        [Route("IsChainValid"), HttpGet()]
+        public IActionResult IsChainValid()
+        {
+            return Ok(_myChain.IsChainValid(_myChain.BlockChain));
         }
     }
 }
