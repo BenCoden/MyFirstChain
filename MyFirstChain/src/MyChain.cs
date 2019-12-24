@@ -1,7 +1,11 @@
-﻿using Newtonsoft.Json;
+﻿using HttpUtils;
+using Microsoft.AspNetCore.Http;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using MyFirstChain.src.Models;
+using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
@@ -10,46 +14,57 @@ namespace MyFirstChain.src
 {
     public interface IChain
     {
-        IEnumerable<Block> BlockChain { get; set; }
+        public int AddTransaction(string sender, string receiver, int amount);
+        IEnumerable<Block> BlockChain { get;  }
         Block CreateBlock(string prevHash = "0", int proff = 1);
         Block PrivousBlock();
         int ProffOfWork(int prevProff);
         string HashBlock(Block newBlock);
         bool IsChainValid(IEnumerable<Block> chain);
+        void AddNode(string arg);
+        void ReplaceChain();
     }
     public class MyChain : IChain
     {
-        public IEnumerable<Block> BlockChain { get; set; }
-        public MyChain()
+        private readonly IChainUtils _chainUtils;
+        public IEnumerable<string> UrlNodes { get; private set; }
+        public IEnumerable<CoinTransaction> UnconfirmedTransactionList { get; private set; }
+        public IEnumerable<string> Nodes { get; private set; }
+        public IEnumerable<Block> BlockChain { get; private set; }
+        public MyChain(IChainUtils chainUtils)
         {
+            _chainUtils = chainUtils;
             if (BlockChain == null)
             {
                 BlockChain = new List<Block>()
                 {
                         new Block(0)
                  };
+                UnconfirmedTransactionList = new List<CoinTransaction>();
+                Nodes = new List<string>();
             }
         }
+        #region Chain Work
 
         public Block CreateBlock(string prevHash = "0", int proff = 1)
         {
-            var newBlock = new Block(BlockChain.Count(), prevHash, proff);
+           var newBlock = new Block(BlockChain.Count(), prevHash, proff)
+            {
+                TransactionList = this.UnconfirmedTransactionList
+            };
             if (IsChainValid(BlockChain.Append(newBlock)))
-            {
-                BlockChain = BlockChain.Append(newBlock);
-            }
+                    BlockChain =  BlockChain.Append(newBlock);
             else
-            {
                 return null;
-            }
-            
+
+            this.UnconfirmedTransactionList = new List<CoinTransaction>();
             return newBlock;
         }
         public Block PrivousBlock() => this.BlockChain.SingleOrDefault(s => s.Index == this.BlockChain.Count() - 1);
         public int ProffOfWork(int prevProff)
         {
             var newProff = 1;
-            using (var hashOpration = CreateHashing())
+            using (var hashOpration = _chainUtils.CreateHashing())
             {
                 byte[] encodeBuffer, hash;
                 string hashHexString;
@@ -57,11 +72,11 @@ namespace MyFirstChain.src
 
                 while (!checkProff)
                 {
-                    encodeBuffer = EncodedProff(prevProff, newProff);
+                    encodeBuffer = _chainUtils.EncodedProff(prevProff, newProff);
                     hash = hashOpration.ComputeHash(encodeBuffer);
-                    hashHexString = ByteArrayToString(hash);
+                    hashHexString = _chainUtils.ByteArrayToString(hash);
 
-                    if (IsProffValid(hashHexString))
+                    if (_chainUtils.IsProffValid(hashHexString))
                         checkProff = true;
                     else
                         newProff++;
@@ -75,18 +90,17 @@ namespace MyFirstChain.src
         {
             var jsonChain = Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(newBlock));
             byte[] hash;
-            using (var hashOpration = CreateHashing())
+            using (var hashOpration = _chainUtils.CreateHashing())
             {
                 hash = hashOpration.ComputeHash(jsonChain);
             }
-            var hashStr = ByteArrayToString(hash);
+            var hashStr = _chainUtils.ByteArrayToString(hash);
             return hashStr;
         }
-
         public bool IsChainValid(IEnumerable<Block> chain)
         {
             var prevBlock = chain.ElementAt(0);
-            using (var hashOpration = CreateHashing())
+            using (var hashOpration = _chainUtils.CreateHashing())
             {
                 Block block;
                 byte[] encodeBuffer, hash;
@@ -97,11 +111,11 @@ namespace MyFirstChain.src
                     if (block.PreviousHash != HashBlock(prevBlock))
                         return false;
 
-                    encodeBuffer = EncodedProff(prevBlock.Proff, block.Proff);
+                    encodeBuffer = _chainUtils.EncodedProff(prevBlock.Proff, block.Proff);
                     hash = hashOpration.ComputeHash(encodeBuffer);
-                    hashHexString = ByteArrayToString(hash);
+                    hashHexString = _chainUtils.ByteArrayToString(hash);
 
-                    if (!IsProffValid(hashHexString))
+                    if (!_chainUtils.IsProffValid(hashHexString))
                         return false;
 
                     prevBlock = block;
@@ -110,107 +124,49 @@ namespace MyFirstChain.src
 
             return true;
         }
+
+        #endregion
+
+        public int AddTransaction(string sender, string receiver,int amount) 
+        {
+            UnconfirmedTransactionList = UnconfirmedTransactionList.Append(new CoinTransaction()
+            {
+                Amount = amount,
+                Sender = sender,
+                Receiver = receiver
+            });
+            //Index of next block
+            return BlockChain.Count();
+        }
+        public void AddNode(string arg)
+        {
+            Nodes = Nodes.Append(arg);            
+        }
+        public void ReplaceChain()
+        {
+            IEnumerable<Block> longestChain = new List<Block>();
+            int maxLength = BlockChain.Count();
+           foreach (var network in Nodes)   
+            {
+                var request = new RestClient($"{network}/GetChain");
+                var requestChain = JsonConvert.DeserializeObject<RequestChain>( request.MakeRequest());
+                if (!IsChainValid(requestChain.chain))
+                    return;
+                if (requestChain.length > maxLength)
+                    longestChain = requestChain.chain;
+               
+            }
+
+            BlockChain = longestChain;
+        }
+
         #region Private methods
 
-        private string ByteArrayToString(byte[] arg)
-        {
-            var result = "";
-            foreach (var item in arg)
-            {
-                string itemStr;
-                switch (item.ToString().Length)
-                {
-                    case 1:
-                        itemStr = $"00{item}";
-                        break;
-                    case 2:
-                        itemStr = $"0{item}";
-                        break;
-                    case 3:
-                        itemStr = $"{item}";
-                        break;
-                    default:
-                        itemStr = "000";
-                        break;
-                }
-                result += itemStr;
-            }
-            return result;
-        }
 
-        private byte[] EncodedProff(int prevProff, int newProff)
-        {
-            byte[] result = Encoding.ASCII.GetBytes((
-                          (Math.Sqrt(newProff) * 2)
-                       - (Math.Sqrt(prevProff) * 2)
-                       ).ToString());
-            return result;
-        }
-
-        private bool IsProffValid(string arg)
-        {
-            bool result = arg.Substring(0, 6).Equals("000000");
-            return result;
-        }
-
-        private SHA512 CreateHashing()
-        {
-            return SHA512.Create();
-        }
 
 
         #endregion
     }
 
-    public  class Block
-    {
-
-        public Block(int currentChainAmount, string prevHash = "0", int proff = 1)
-        {
-
-            this.Index = currentChainAmount;
-            this.TimeSpame = DateTime.Now.ToUniversalTime();
-            this.Proff = proff;
-            this.PreviousHash = prevHash;
-            this.Data = "";
-        }
-
-
-        private string _index;
-        private string _timeStame;
-        private string _proff;
-        private string _prevHash;
-        private string _data;
-
-        public string Data
-        {
-            get { return _data; }
-            set { _data = value; }
-        }
-
-        public int Index
-        {
-            get { return int.Parse(_index); }
-            set { _index = value.ToString(); }
-        }
-        public DateTime TimeSpame
-        {
-            get { return DateTime.Parse(_timeStame); }
-            set
-            {
-                var temp = value.ToUniversalTime();
-                _timeStame = temp.ToString();
-            }
-        }
-        public int Proff
-        {
-            get { return int.Parse(_proff); }
-            set { _proff = value.ToString(); }
-        }
-        public string PreviousHash
-        {
-            get { return _prevHash; }
-            set { _prevHash = value; }
-        }
-    }
+   
 }

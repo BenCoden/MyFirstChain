@@ -28,6 +28,8 @@ namespace MyFirstChain
         {
             services.AddControllers();
             services.AddSingleton<IChain, MyChain>();
+
+            services.AddSingleton<IChainUtils, ChainUtils>();
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
@@ -38,11 +40,11 @@ namespace MyFirstChain
                 app.UseDeveloperExceptionPage();
             }
 
-            app.UseHttpsRedirection();
+           // app.UseHttpsRedirection();
 
             app.UseRouting();
 
-            app.UseAuthorization();
+            //app.UseAuthorization();
 
             app.UseEndpoints(endpoints =>
             {

@@ -4,14 +4,14 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using MyFirstChain.src;
+using MyFirstChain.src.Models;
 
 namespace MyFirstChain.Controllers
 {
     public class BlockChainController : ControllerBase
     {
         private IChain _myChain;
-        public BlockChainController(IChain chain)
-        
+        public BlockChainController(IChain chain)        
         { 
             _myChain = chain;
         }
@@ -28,6 +28,7 @@ namespace MyFirstChain.Controllers
             {
                 message = "Winner, Winner Chick Dinner!",
                 index = block.Index,
+                Transaction = block.TransactionList,
                 timeStamp = block.TimeSpame,
                 proff = block.Proff,
                 prevHash = block.PreviousHash
@@ -51,5 +52,42 @@ namespace MyFirstChain.Controllers
         {
             return Ok(_myChain.IsChainValid(_myChain.BlockChain));
         }
+
+
+        [Route("AddTransaction"),HttpPost]
+        public IActionResult AddTransaction([FromBody]CoinTransaction arg)
+        {
+            var result = _myChain.AddTransaction(arg.Sender, arg.Receiver, arg.Amount);
+            return Ok(new {
+                message ="Transaction Added to pool",
+                transaction = arg,
+                blockIndex = result
+            });
+        }
+
+        [Route("AddNode"),HttpPost()]
+        public IActionResult AddNode([FromBody]NodeReuqest arg) 
+        {
+            _myChain.AddNode(arg.NewNode);
+            //foreach (var item in arg)
+            //{
+            //    _myChain.AddNode(item);
+            //}
+            return Ok(new
+            {
+                message = "Node added",
+                nodes = arg
+            });
+
+        }
+
+        [Route("SyncChain"),HttpGet()]
+        public IActionResult SyncChain()
+        {
+            _myChain.ReplaceChain();
+            return Ok(_myChain.BlockChain);
+        }
+
+
     }
 }
