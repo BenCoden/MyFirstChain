@@ -15,6 +15,6 @@ namespace MyFirstChain.src.Models
 
     public class NodeReuqest
     {
-        public string NewNode { get; set; }
+        public IEnumerable<string> NewNode { get; set; }
     }
 }

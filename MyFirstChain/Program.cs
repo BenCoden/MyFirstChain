@@ -15,7 +15,7 @@ namespace MyFirstChain
         public static void Main(string[] args)
         {
             var configuration = new ConfigurationBuilder()
-          .AddCommandLine(args)
+          //.AddCommandLine(args)
           .AddJsonFile("appsettings.Development.json")
           .Build();
             var port = configuration.GetSection("Host").Value;
